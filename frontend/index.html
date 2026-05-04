@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Market Simulator</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light">
+
+<div class="container mt-5">
+    <h1 class="text-center mb-4">Stock Market Simulator</h1>
+
+    <div id="alert-box"></div>
+
+    <div class="row">
+        <!-- BANK STATE -->
+        <div class="col-md-6 mb-4">
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white text-center">Bank State</div>
+                <div class="card-body">
+                    <button class="btn btn-sm btn-outline-primary mb-3" onclick="fetchBankStocks()">Refresh Bank</button>
+                    <ul id="bank-stocks" class="list-group mb-3"></ul>
+
+                    <hr>
+                    <h6>Set Bank State (JSON)</h6>
+                    <textarea id="set-bank-json" class="form-control mb-2" rows="3">{"stocks": [{"name": "AAPL", "quantity": 100}, {"name": "TSLA", "quantity": 50}]}</textarea>
+                    <button class="btn btn-warning w-100" onclick="setBankStocks()">Set New State</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- TRADING & WALLET -->
+        <div class="col-md-6 mb-4">
+            <div class="card shadow-sm mb-4">
+                <div class="card-header bg-success text-white text-center">Trade</div>
+                <div class="card-body">
+                    <div class="row g-2">
+                        <div class="col-6"><input type="text" id="trade-wallet" class="form-control" placeholder="Wallet ID (e.g. w1)"></div>
+                        <div class="col-6"><input type="text" id="trade-stock" class="form-control" placeholder="Stock (e.g. AAPL)"></div>
+                    </div>
+                    <div class="row g-2 mt-2">
+                        <div class="col-6"><button class="btn btn-success w-100" onclick="trade('buy')">Buy</button></div>
+                        <div class="col-6"><button class="btn btn-danger w-100" onclick="trade('sell')">Sell</button></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card shadow-sm">
+                <div class="card-header bg-secondary text-white text-center">Check Wallet</div>
+                <div class="card-body">
+                    <div class="input-group mb-3">
+                        <input type="text" id="check-wallet-id" class="form-control" placeholder="Wallet ID">
+                        <button class="btn btn-secondary" onclick="fetchWallet()">Check</button>
+                    </div>
+                    <ul id="wallet-stocks" class="list-group"></ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- AUDIT LOG -->
+    <div class="row">
+        <div class="col-12 mb-5">
+            <div class="card shadow-sm">
+                <div class="card-header bg-dark text-white text-center">Audit Log</div>
+                <div class="card-body">
+                    <button class="btn btn-sm btn-outline-dark mb-3" onclick="fetchLog()">Refresh Log</button>
+                    <button class="btn btn-sm btn-danger mb-3 float-end" onclick="triggerChaos()">Trigger Chaos</button>
+                    <div class="table-responsive">
+                        <table class="table table-striped table-sm">
+                            <thead><tr><th>Type</th><th>Wallet ID</th><th>Stock</th></tr></thead>
+                            <tbody id="audit-log-body"></tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    // Utils
+    const showAlert = (msg, type='danger') => {
+        const box = document.getElementById('alert-box');
+        box.innerHTML = `<div class="alert alert-${type} alert-dismissible fade show">${msg}<button type="button" class="btn-close" data-bs-dismiss="alert"></button></div>`;
+        setTimeout(() => box.innerHTML = '', 5000);
+    };
+
+    const handleResponse = async (res) => {
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.message || err.code || `HTTP Error ${res.status}`);
+        }
+        return res;
+    };
+
+    const fetchBankStocks = async () => {
+        try {
+            const res = await fetch('/stocks').then(handleResponse).then(r => r.json());
+            const list = document.getElementById('bank-stocks');
+            list.innerHTML = res.stocks.length ? '' : '<li class="list-group-item text-muted">Bank is empty</li>';
+            res.stocks.forEach(s => list.innerHTML += `<li class="list-group-item d-flex justify-content-between align-items-center"><b>${s.name}</b> <span class="badge bg-primary rounded-pill">${s.quantity}</span></li>`);
+        } catch (e) { showAlert(e.message); }
+    };
+
+    const setBankStocks = async () => {
+        try {
+            const body = document.getElementById('set-bank-json').value;
+            await fetch('/stocks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body }).then(handleResponse);
+            showAlert('Bank state updated successfully', 'success');
+            fetchBankStocks();
+            fetchLog();
+        } catch (e) { showAlert('Invalid JSON or server error: ' + e.message); }
+    };
+
+    const trade = async (type) => {
+        const walletId = document.getElementById('trade-wallet').value;
+        const stockName = document.getElementById('trade-stock').value;
+        if (!walletId || !stockName) return showAlert('Please fill both Wallet ID and Stock name');
+
+        try {
+            await fetch(`/wallets/${walletId}/stocks/${stockName}`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type })
+            }).then(handleResponse);
+            showAlert(`Successfully executed ${type.toUpperCase()} for ${stockName}`, 'success');
+            fetchBankStocks();
+            fetchLog();
+            if(document.getElementById('check-wallet-id').value === walletId) fetchWallet();
+        } catch (e) { showAlert(e.message); }
+    };
+
+    const fetchWallet = async () => {
+        const walletId = document.getElementById('check-wallet-id').value;
+        if (!walletId) return;
+        try {
+            const res = await fetch(`/wallets/${walletId}`).then(handleResponse).then(r => r.json());
+            const list = document.getElementById('wallet-stocks');
+            list.innerHTML = res.stocks.length ? '' : '<li class="list-group-item text-muted">Wallet is empty</li>';
+            res.stocks.forEach(s => list.innerHTML += `<li class="list-group-item d-flex justify-content-between align-items-center"><b>${s.name}</b> <span class="badge bg-success rounded-pill">${s.quantity}</span></li>`);
+        } catch (e) { showAlert(e.message); }
+    };
+
+    const fetchLog = async () => {
+        try {
+            const res = await fetch('/log').then(handleResponse).then(r => r.json());
+            const tbody = document.getElementById('audit-log-body');
+            tbody.innerHTML = '';
+            res.log.forEach(l => {
+                const color = l.type === 'buy' ? 'text-success' : 'text-danger';
+                tbody.innerHTML += `<tr><td class="${color} fw-bold">${l.type.toUpperCase()}</td><td>${l.wallet_id}</td><td>${l.stock_name}</td></tr>`;
+            });
+        } catch (e) { showAlert(e.message); }
+    };
+
+    const triggerChaos = async () => {
+        try {
+            fetch('/chaos', { method: 'POST' });
+            showAlert('Chaos triggered. One backend instance just died. Nginx will route your next requests to the survivor.', 'warning');
+        } catch (e) { console.log("Chaos executed"); }
+    };
+
+    window.onload = () => { fetchBankStocks(); fetchLog(); };
+</script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

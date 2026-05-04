@@ -16,13 +16,13 @@ As a system handling virtual assets (stocks), maintaining data integrity during 
 
 ```mermaid
 graph TD
-    Client([Client / UI]) -->|HTTP POST /wallets/...| Nginx[Nginx Load Balancer]
-    Nginx -->|Round Robin| App1[Spring Boot - Instance 1]
-    Nginx -->|Failover / Round Robin| App2[Spring Boot - Instance 2]
+    Client([Client / UI]) -->|"HTTP POST /wallets/..."| Nginx[Nginx Load Balancer]
+    Nginx -->|"Round Robin"| App1[Spring Boot - Instance 1]
+    Nginx -->|"Failover / Round Robin"| App2[Spring Boot - Instance 2]
     
-    subgraph Data Layer
-        App1 -->|@Transactional + Pessimistic Lock| DB[(PostgreSQL)]
-        App2 -->|@Transactional + Pessimistic Lock| DB
+    subgraph DataLayer [Data Layer]
+        App1 -->|"@Transactional + Pessimistic Lock"| DB[(PostgreSQL)]
+        App2 -->|"@Transactional + Pessimistic Lock"| DB
     end
 ```
 
